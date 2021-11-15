@@ -84,7 +84,7 @@ void *C1_task(void *task_param)
         pthread_mutex_lock(&c1_task_param->lock);
         while (!c1_task_param->shmPtr[0])
         {
-            pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
+            // pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
         }
         sum += i;
         pthread_mutex_unlock(&c1_task_param->lock);
@@ -149,7 +149,7 @@ void *C2_task(void *task_param)
         pthread_mutex_lock(&c2_task_param->lock);
         while (!c2_task_param->shmPtr[1])
         {
-            pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
+            // pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
         }
         fscanf(f, "%d\n", &n);
         printf("%d\t%d\n", i, n);
@@ -213,7 +213,7 @@ void *C3_task(void *task_param)
         pthread_mutex_lock(&c3_task_param->lock);
         while (!c3_task_param->shmPtr[2])
         {
-            pthread_cond_wait(&c3_task_param->cond, &c3_task_param->lock);
+            // pthread_cond_wait(&c3_task_param->cond, &c3_task_param->lock);
         }
         fscanf(f, "%d\n", &n);
         sum += n;
@@ -459,11 +459,11 @@ void scheduler_rr(int *shmPtr, double time_quantum)
         done = 1;
         for (int i = 0; i < 3; i++)
         {
-            shmPtr[i + 6] = 1;
+            
             if (!proc_start[i])
             {
                 printf("Running Child Process %d...\n", i + 1);
-
+                shmPtr[i + 6] = 1;
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
                 printf("Start time %ld\n", start.tv_nsec);
                 proc_start[i] = 1;
@@ -471,7 +471,7 @@ void scheduler_rr(int *shmPtr, double time_quantum)
 
             if (!shmPtr[i + 3])
             {
-                // printf("Re-run Child Process %d...\n", i + 1);
+                // printf("R%d...\n", i + 1);
                 done = 0;
                 struct timespec quantumStart, quantumEnd;
 
@@ -483,13 +483,13 @@ void scheduler_rr(int *shmPtr, double time_quantum)
                 {
                     // printf("Enter loop - Child Process %d...\n", i + 1);
                     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &quantumEnd);
-                    elapsedTime = (quantumEnd.tv_sec - quantumStart.tv_sec);
-                    elapsedTime += (quantumEnd.tv_nsec - quantumStart.tv_nsec) / 1e9;
+                    elapsedTime = (quantumEnd.tv_sec - quantumStart.tv_sec) * 1e6;
+                    elapsedTime += (quantumEnd.tv_nsec - quantumStart.tv_nsec) / 1e3;
                     continue;
                 }
                 shmPtr[i] = 0;
-                elapsedTime = (quantumEnd.tv_sec - start.tv_sec);
-                elapsedTime += (quantumEnd.tv_nsec - start.tv_nsec) / 1e9;
+                elapsedTime = (quantumEnd.tv_sec - start.tv_sec) * 1e6;
+                elapsedTime += (quantumEnd.tv_nsec - start.tv_nsec) / 1e3;
                 // printf("Elapsed time %lf\n", elapsedTime);
 
                 //perf_process[i]->burst_time += elapsedTime;
