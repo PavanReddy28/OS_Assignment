@@ -57,6 +57,7 @@ typedef struct
 
 void *C1_task(void *task_param)
 {
+    // printf("Enter C1 Task Thread....\n");
     // Parameters Initialization
     Task_param *c1_task_param = (Task_param *)task_param;
     int n1 = c1_task_param->n;
@@ -64,10 +65,12 @@ void *C1_task(void *task_param)
 
     // Locking after creation
     pthread_mutex_lock(&c1_task_param->lock);
+    printf("C1 Task Thread - Waiting for cond signal....\n");
     while (!c1_task_param->shmPtr[0])
     {
         pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
     }
+    printf("C1 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c1_task_param->lock);
 
     // Performing the task
@@ -105,18 +108,19 @@ void C1_pipe(int pipefds[2], int sum)
 
 void *C2_task(void *task_param)
 {
-
-    printf("Enter C2 Task Thread....\n");
+    // sleep(1);
     // Parameters Initialization
     Task_param *c2_task_param = (Task_param *)task_param;
     int n2 = c2_task_param->n;
 
     // Locking after creation
     pthread_mutex_lock(&c2_task_param->lock);
+    printf("C2 Task Thread - Waiting for cond signal....\n");
     while (!c2_task_param->shmPtr[1])
     {
         pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
     }
+    printf("C2 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c2_task_param->lock);
 
     printf("C2 Task Thread - Reading from file....\n");
@@ -165,7 +169,7 @@ void C2_pipe(int pipefds[2])
 
 void *C3_task(void *task_param)
 {
-
+    // sleep(1);
     // Parameters Initialization
     Task_param *c3_task_param = (Task_param *)task_param;
     int n3 = c3_task_param->n;
@@ -173,10 +177,12 @@ void *C3_task(void *task_param)
 
     // Locking after creation
     pthread_mutex_lock(&c3_task_param->lock);
+    printf("C3 Task Thread - Waiting for cond signal....\n");
     while (!c3_task_param->shmPtr[2])
     {
         pthread_cond_wait(&c3_task_param->cond, &c3_task_param->lock);
     }
+    printf("C3 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c3_task_param->lock);
 
     FILE *f;
@@ -277,8 +283,6 @@ void c1_process(pthread_t *tid, int n1, int pipefds[2], int shmid)
 
     C1_pipe(pipefds, res);
 
-    shmdt((void *)shmPtr);
-
     _exit(EXIT_SUCCESS);
 }
 
@@ -330,7 +334,7 @@ void c2_process(pthread_t *tid, int n2, int pipefds[2], int shmid)
 
     C2_pipe(pipefds);
 
-    shmdt((void *)shmPtr);
+    // shmdt((void *)shmPtr);
     _exit(EXIT_SUCCESS);
 }
 
@@ -385,7 +389,6 @@ void c3_process(pthread_t *tid, int n3, int pipefds[2], int shmid)
 
     C3_pipe(pipefds, res);
 
-    shmdt((void *)shmPtr);
     _exit(EXIT_SUCCESS);
 }
 
