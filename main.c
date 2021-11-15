@@ -116,8 +116,10 @@ void *C2_task(void *task_param)
     // Locking after creation
     pthread_mutex_lock(&c2_task_param->lock);
     printf("C2 Task Thread - Waiting for cond signal....\n");
+    printf("C2 Task Thread - Running - SHared Memmory Value - %d\n", c2_task_param->shmPtr[1]);
     while (!c2_task_param->shmPtr[1])
     {
+        printf("C2 Task Thread - Running - SHared Memmory Value - %d\n", c2_task_param->shmPtr[1]);
         pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
     }
     printf("C2 Task Thread - Recieved cond signal....\n");
@@ -169,7 +171,7 @@ void C2_pipe(int pipefds[2])
 
 void *C3_task(void *task_param)
 {
-    // sleep(1);
+    // sleep(2);
     // Parameters Initialization
     Task_param *c3_task_param = (Task_param *)task_param;
     int n3 = c3_task_param->n;
@@ -178,7 +180,7 @@ void *C3_task(void *task_param)
     // Locking after creation
     pthread_mutex_lock(&c3_task_param->lock);
     printf("C3 Task Thread - Waiting for cond signal....\n");
-    while (!c3_task_param->shmPtr[2])
+    if (!c3_task_param->shmPtr[2])
     {
         pthread_cond_wait(&c3_task_param->cond, &c3_task_param->lock);
     }
@@ -254,7 +256,7 @@ void c1_process(pthread_t *tid, int n1, int pipefds[2], int shmid)
     };
 
     pthread_create(tid, NULL, &C1_task, (void *)&c_task);
-
+    printf("C1 Task Thread - After thread creation.\n");
     while (!shmPtr[3])
     {
 
@@ -311,20 +313,20 @@ void c2_process(pthread_t *tid, int n2, int pipefds[2], int shmid)
     };
 
     pthread_create(tid, NULL, &C2_task, (void *)&c_task);
+    printf("C2 Task Thread - After thread creation. Shared Memory value %d.\n", shmPtr[4]);
     while (!shmPtr[4])
     {
-
         pthread_mutex_lock(&lock);
-
         // Critical Section
         if (shmPtr[1])
         {
             pthread_cond_signal(&condition);
         }
         // End of critical section
-
         pthread_mutex_unlock(&lock);
     }
+
+    printf("Exit Loop in C2 Process.\n");
 
     pthread_join(*tid, NULL);
 
@@ -363,7 +365,7 @@ void c3_process(pthread_t *tid, int n3, int pipefds[2], int shmid)
     };
 
     pthread_create(tid, NULL, &C3_task, (void *)&c_task);
-
+    printf("C3 Task Thread - After thread creation.\n");
     while (!shmPtr[5])
     {
 
@@ -425,9 +427,70 @@ void *m_monitor_thread(void *param)
     pthread_exit(0);
 }
 
-void scheduler_rr(int *shmPtr)
+void scheduler_rr(int *shmPtr, int time_quantum)
 {
     // To-do
+    printf("RR Start...\n");
+    int done = 0;
+
+    int proc_start[3] = {0, 0, 0};
+    int proc_mark[3] = {0, 0, 0};
+
+    Perf_scheduler *perf_scheduler;
+    Perf_process *perf_process[3];
+
+    printf("Get scheduler start time.\n");
+    //clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_start);
+
+    while (!done)
+    {
+        done = 1;
+        for (int i = 0; i < 3; i++)
+        {
+            if (!proc_start[i])
+            {
+                printf("Running Child Process %d...\n", i + 1);
+                //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_start);
+                proc_start[i] = 1;
+            }
+
+            if (!shmPtr[i + 3])
+            {
+                done = 0;
+                struct timespec quantumStart, quantumEnd;
+
+                //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &quantumStart);
+                double elapsedTime = 0;
+
+                shmPtr[i] = 1;
+
+                while (!shmPtr[i + 3] && elapsedTime < time_quantum)
+                {
+                    // clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &quantumEnd);
+                    // //elapsedTime = getElapsedTime(quantumStart, quantumEnd);
+                    // elapsedTime = (quantumEnd.tv_sec - quantumStart.tv_sec) * 1000000.0;
+                    // elapsedTime += (quantumEnd.tv_sec - quantumStart.tv_sec) / 1000.0;
+                    continue;
+                }
+                shmPtr[i] = 0;
+
+                //perf_process[i]->burst_time += elapsedTime;
+            }
+
+            if (shmPtr[i + 3] && !proc_mark[i])
+            {
+                //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_end);
+                proc_mark[i] = 1;
+                printf("End Child Process %d...\n", i + 1);
+            }
+        }
+    }
+    //printf("Get scheduler end time.\n");
+    //clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_end);
+
+    //for(int i=0;i<3;i++){
+    //    perf_scheduler[i]->
+    //}
 }
 
 void scheduler_fcfs(int *shmPtr)
@@ -445,6 +508,7 @@ void scheduler_fcfs(int *shmPtr)
         printf("Running Child Process %d...\n", i + 1);
         clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_start);
 
+        // Running the task
         shmPtr[i] = 1;
         while (!shmPtr[i + 3])
         {
@@ -482,6 +546,7 @@ int main(int argc, char *argv[])
     }
     scheduler_type = atoi(argv[1]);
     int n[3] = {atoi(argv[2]), atoi(argv[3]), atoi(argv[4])};
+    int time_quantum = atoi(argv[5]);
 
     // Shared Memory
     int shmid;
@@ -550,7 +615,7 @@ int main(int argc, char *argv[])
     if (scheduler_type == rr)
     {
         printf("Round robin scheduler selected.\n");
-        scheduler_rr(shmPtr);
+        scheduler_rr(shmPtr, time_quantum);
     }
     else
     {
