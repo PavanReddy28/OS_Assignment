@@ -39,13 +39,13 @@ typedef struct
 
 } Perf_scheduler;
 
-typedef struct
-{
-    struct timespec thread_start;
-    struct timespec thread_end;
+// typedef struct
+// {
+//     struct timespec thread_start;
+//     struct timespec thread_end;
 
-    double burst_time;
-} Perf_threads;
+//     double burst_time;
+// } Perf_threads;
 
 typedef struct
 {
@@ -69,12 +69,12 @@ void *C1_task(void *task_param)
     }
     // Locking after creation
     pthread_mutex_lock(&c1_task_param->lock);
-    printf("C1 Task Thread - Waiting for cond signal....\n");
+    // printf("C1 Task Thread - Waiting for cond signal....\n");
     while (!c1_task_param->shmPtr[0])
     {
         pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
     }
-    printf("C1 Task Thread - Recieved cond signal....\n");
+    // printf("C1 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c1_task_param->lock);
 
     // Performing the task
@@ -123,16 +123,16 @@ void *C2_task(void *task_param)
 
     // Locking after creation
     pthread_mutex_lock(&c2_task_param->lock);
-    printf("C2 Task Thread - Waiting for cond signal....\n");
+    // printf("C2 Task Thread - Waiting for cond signal....\n");
     while (!c2_task_param->shmPtr[1])
     {
         printf("\n&");
         pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
     }
-    printf("C2 Task Thread - Recieved cond signal....\n");
+    // printf("C2 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c2_task_param->lock);
 
-    printf("C2 Task Thread - Reading from file....\n");
+    // printf("C2 Task Thread - Reading from file....\n");
     FILE *f;
     f = fopen("./n2.txt", "r");
 
@@ -190,12 +190,12 @@ void *C3_task(void *task_param)
 
     // Locking after creation
     pthread_mutex_lock(&c3_task_param->lock);
-    printf("C3 Task Thread - Waiting for cond signal....\n");
+    // printf("C3 Task Thread - Waiting for cond signal....\n");
     while (!c3_task_param->shmPtr[2])
     {
         pthread_cond_wait(&c3_task_param->cond, &c3_task_param->lock);
     }
-    printf("C3 Task Thread - Recieved cond signal....\n");
+    // printf("C3 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c3_task_param->lock);
 
     FILE *f;
@@ -441,6 +441,7 @@ void *m_monitor_thread(void *param)
 void scheduler_rr(int *shmPtr, double time_quantum)
 {
     // To-do
+
     printf("RR Start...\n");
     int done = 0;
 
@@ -451,7 +452,7 @@ void scheduler_rr(int *shmPtr, double time_quantum)
     Perf_process *perf_process[3];
     struct timespec start, end;
 
-    printf("Get scheduler start time.\n");
+    // printf("Get scheduler start time.\n");
     //clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_start);
 
     while (!done)
@@ -462,10 +463,10 @@ void scheduler_rr(int *shmPtr, double time_quantum)
             
             if (!proc_start[i])
             {
-                printf("Running Child Process %d...\n", i + 1);
+                // printf("Running Child Process %d...\n", i + 1);
                 shmPtr[i + 6] = 1;
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
-                printf("Start time %ld\n", start.tv_nsec);
+                // printf("Start time %ld\n", start.tv_nsec);
                 proc_start[i] = 1;
             }
 
@@ -499,9 +500,9 @@ void scheduler_rr(int *shmPtr, double time_quantum)
             {
                 //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_end);
                 clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
-                printf("End time %ld\n", end.tv_nsec);
+                // printf("End time %ld\n", end.tv_nsec);
                 proc_mark[i] = 1;
-                printf("End Child Process %d...\n", i + 1);
+                // printf("End Child Process %d...\n", i + 1);
             }
         }
     }
@@ -513,45 +514,71 @@ void scheduler_rr(int *shmPtr, double time_quantum)
     //}
 }
 
-void scheduler_fcfs(int *shmPtr)
-{
-    printf("FCFS Start...\n");
-    // Initialization
-    Perf_scheduler *perf_scheduler;
-    Perf_process *perf_process[3];
+double diff_time(struct timespec t2, struct timespec t1) {
+    return (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_nsec - t1.tv_nsec) / 1e3;
+}
 
-    printf("Get scheduler start time.\n");
-    // clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_start);
+void report_generator(Perf_scheduler perf_scheduler, Perf_process *perf_process, int *n) {
+    printf("Total time taken: %lf.\n", perf_scheduler.burst_time);
+    // process, n, bt, tat, wt
+    FILE *f;
+    f = fopen("reports_fcfs.csv", "a+");
+    for(int i=0; i<3; i++) {
+        double arrival, tat, wt;
+        printf("Process %d:\n", i+1);
+        printf("Burst Time = %lf\n", perf_process[i].burst_time);
+        arrival = diff_time(perf_process[i].process_start, perf_scheduler.scheduler_start);
+        tat = diff_time(perf_process[i].process_end, perf_scheduler.scheduler_start);
+        wt = tat - perf_process[i].burst_time;
+        printf("Process Scheduled time Time = %lf\n", arrival);
+        printf("Turn Around Time = %lf\n", tat);
+        printf("Wait Time = %lf\n", wt);
+
+        char output[100];
+        sprintf(output, "%d,%d,%lf,%lf,%lf\n", i+1, n[i], perf_process[i].burst_time, tat, wt);
+        fprintf(f, output, strlen(output));
+    }
+    fclose(f);
+}
+
+void scheduler_fcfs(int *shmPtr, int* n)
+{
+    // printf("FCFS Start...\n");
+    // Initialization
+    Perf_scheduler perf_scheduler;
+    Perf_process perf_process[3];
+
+    // printf("Get scheduler start time.\n");
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler.scheduler_start);
 
     for (int i = 0; i < 3; i++)
     {
-        printf("Running Child Process %d...\n", i + 1);
+        // printf("Running Child Process %d...\n", i + 1);
 
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i].process_start);
         shmPtr[i + 6] = 1;
-
-        // clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_start);
-
         shmPtr[i] = 1;
         while (!shmPtr[i + 3])
         {
             continue;
         }
         shmPtr[i] = 0;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i].process_end);
 
-        // clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_end);
-        printf("End Child Process %d...\n", i + 1);
+        
+        // printf("End Child Process %d...\n", i + 1);
 
-        // Burst time in Microseconds
-        // perf_process[i]->burst_time = (perf_process[i]->process_end.tv_sec - perf_process[i]->process_start.tv_sec) * 1e6 + (perf_process[i]->process_end.tv_nsec - perf_process[i]->process_start.tv_nsec) / 1e3;
-        // printf("Process %d Times:\n\tBurst Time = %lf\n", i + 1, perf_process[i]->burst_time);
+        perf_process[i].burst_time = diff_time(perf_process[i].process_end, perf_process[i].process_start);
     }
 
-    printf("Get scheduler end time.\n");
-    // clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_end);
+    // printf("Get scheduler end time.\n");
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler.scheduler_end);
 
     // printf(".\n");
-    // perf_scheduler->burst_time = (perf_scheduler->scheduler_end.tv_sec - perf_scheduler->scheduler_start.tv_sec) * 1e6 + (perf_scheduler->scheduler_end.tv_nsec - perf_scheduler->scheduler_start.tv_nsec) / 1e3;
-    // printf("Scheduler Times:\n\tBurst Time = %lf\n", perf_scheduler->burst_time);
+    perf_scheduler.burst_time = diff_time(perf_scheduler.scheduler_end, perf_scheduler.scheduler_start);
+    // printf("Scheduler Times:\n\tBurst Time = %lf\n", perf_scheduler.burst_time);
+
+    report_generator(perf_scheduler, perf_process, n);
 }
 
 int main(int argc, char *argv[])
@@ -591,7 +618,7 @@ int main(int argc, char *argv[])
     }
 
     // Child Process Creation
-    printf("Children Process Creation started.\n");
+    // printf("Children Process Creation started.\n");
     for (int i = 0; i < 3; i++)
     {
 
@@ -631,21 +658,22 @@ int main(int argc, char *argv[])
     pthread_t master_monitor;
     pthread_create(&master_monitor, NULL, m_monitor_thread, (void *)pipefds);
 
-    printf("Scheduler start.\n");
+    // printf("Scheduler start.\n");
 
     // Invoke the selected scheduler
     if (scheduler_type == rr)
     {
         printf("Round robin scheduler selected.\n");
+        write(STDOUT_FILENO, "Round robin",12);
         scheduler_rr(shmPtr, time_quantum);
     }
     else
     {
         printf("FCFS scheduler selected.\n");
-        scheduler_fcfs(shmPtr);
+        scheduler_fcfs(shmPtr, n);
     }
 
-    printf("Scheduler end.\n");
+    // printf("Scheduler end.\n");
 
     pthread_join(master_monitor, NULL);
 
