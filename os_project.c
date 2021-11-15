@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include <sys/shm.h>
 #include <sys/types.h>
@@ -15,6 +16,8 @@
 #include <pthread.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
+
 
 enum scheduler_t
 {
@@ -61,7 +64,7 @@ void *C1_task(void *task_param)
     // Parameters Initialization
     Task_param *c1_task_param = (Task_param *)task_param;
     int n1 = c1_task_param->n;
-    int sum;
+    u_int64_t sum;
     printf("Enter task 1 thread\n");
     while (!c1_task_param->shmPtr[6])
     {
@@ -100,12 +103,12 @@ void *C1_task(void *task_param)
     pthread_exit((void *)sum);
 }
 
-void C1_pipe(int pipefds[2], int sum)
+void C1_pipe(int pipefds[2], u_int64_t sum)
 {
     close(pipefds[0]);
 
     char sum_res[30];
-    sprintf(sum_res, "%d\n", sum);
+    sprintf(sum_res, "%" PRIu64"\n", sum);
 
     write(pipefds[1], sum_res, strlen(sum_res));
 
@@ -183,7 +186,7 @@ void *C3_task(void *task_param)
     // Parameters Initialization
     Task_param *c3_task_param = (Task_param *)task_param;
     int n3 = c3_task_param->n;
-    int sum;
+    u_int64_t sum;
 
     while (!c3_task_param->shmPtr[8])
     {
@@ -232,12 +235,12 @@ void *C3_task(void *task_param)
     pthread_exit((void *)sum);
 }
 
-void C3_pipe(int *pipefds, int sum)
+void C3_pipe(int *pipefds, uint64_t sum)
 {
     close(pipefds[0]);
 
     char sum_res[100];
-    sprintf(sum_res, "%d\n", sum);
+    sprintf(sum_res, "%" PRIu64 "\n", sum);
 
     write(pipefds[1], sum_res, 30);
 
@@ -288,9 +291,9 @@ void c1_process(pthread_t *tid, int n1, int pipefds[2], int shmid)
     // Controlled by Master
 
     void *ret_value;
-    int res;
+    uint64_t res;
     pthread_join(*tid, &ret_value);
-    res = (int *)ret_value;
+    res = (uint64_t *)ret_value;
 
     // destroy condition and mutex
     pthread_cond_destroy(&condition);
@@ -396,7 +399,7 @@ void c3_process(pthread_t *tid, int n3, int pipefds[2], int shmid)
 
     void *ret_value;
     pthread_join(*tid, &ret_value);
-    int res = (int *)ret_value;
+    uint64_t res = (uint64_t *)ret_value;
 
     // destroy condition and mutex
     pthread_cond_destroy(&condition);
@@ -440,7 +443,35 @@ void *m_monitor_thread(void *param)
     pthread_exit(0);
 }
 
-void scheduler_rr(int *shmPtr, double time_quantum)
+double diff_time(struct timespec t2, struct timespec t1) {
+    return (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_nsec - t1.tv_nsec) / 1e3;
+}
+
+void report_generator(Perf_scheduler perf_scheduler, Perf_process *perf_process, int *n) {
+    printf("Total time taken: %lf.\n", perf_scheduler.burst_time);
+    // process, n, bt, tat, wt
+    FILE *f;
+    f = fopen("reports_rr.csv", "a+");
+    for(int i=0; i<3; i++) {
+        double arrival, tat, wt;
+        printf("Process %d:\n", i+1);
+        printf("Burst Time = %lf\n", perf_process[i].burst_time);
+        arrival = diff_time(perf_process[i].process_start, perf_scheduler.scheduler_start);
+        tat = diff_time(perf_process[i].process_end, perf_scheduler.scheduler_start);
+        wt = tat - perf_process[i].burst_time;
+        printf("Process Scheduled time Time = %lf\n", arrival);
+        printf("Turn Around Time = %lf\n", tat);
+        printf("Wait Time = %lf\n", wt);
+
+        char output[100];
+        sprintf(output, "%d,%d,%lf,%lf,%lf\n", i+1, n[i], perf_process[i].burst_time, tat, wt);
+        fprintf(f, output, strlen(output));
+    }
+    fclose(f);
+}
+
+
+void scheduler_rr(int *shmPtr, double time_quantum, int *n)
 {
     // To-do
 
@@ -450,12 +481,12 @@ void scheduler_rr(int *shmPtr, double time_quantum)
     int proc_start[3] = {0, 0, 0};
     int proc_mark[3] = {0, 0, 0};
 
-    Perf_scheduler *perf_scheduler;
-    Perf_process *perf_process[3];
+    Perf_scheduler perf_scheduler;
+    Perf_process perf_process[3];
     struct timespec start, end;
 
     printf("Get scheduler start time.\n");
-    //clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_start);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler.scheduler_start);
 
     while (!done)
     {
@@ -467,7 +498,7 @@ void scheduler_rr(int *shmPtr, double time_quantum)
             {
                 printf("Running Child Process %d...\n", i + 1);
                 shmPtr[i + 6] = 1;
-                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i].process_start);
                 printf("Start time %ld\n", start.tv_nsec);
                 proc_start[i] = 1;
             }
@@ -492,65 +523,38 @@ void scheduler_rr(int *shmPtr, double time_quantum)
                     // printf("Enter loop - Child Process %d...\n", i + 1);
                     shmPtr[i] = 1;
                     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &quantumEnd);
-                    elapsedTime = (quantumEnd.tv_sec - quantumStart.tv_sec) * 1e6;
-                    elapsedTime += (quantumEnd.tv_nsec - quantumStart.tv_nsec) / 1e3;
+                    elapsedTime = diff_time(quantumEnd, quantumStart);
                     continue;
                 }
 
 
                 shmPtr[i] = 0;
                 
-                elapsedTime = (quantumEnd.tv_sec - start.tv_sec) * 1e6;
-                elapsedTime += (quantumEnd.tv_nsec - start.tv_nsec) / 1e3;
+                // elapsedTime = diff_time(quantumEnd, quantumStart);
                 // printf("Elapsed time %lf\n", elapsedTime);
 
-                //perf_process[i]->burst_time += elapsedTime;
+                perf_process[i].burst_time += elapsedTime;
             }
 
             if (shmPtr[i + 3] && !proc_mark[i])
             {
                 //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i]->process_end);
-                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
-                printf("End time %ld\n", end.tv_nsec);
+                clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &perf_process[i].process_end);
+                
                 proc_mark[i] = 1;
-                printf("End Child Process %d...\n", i + 1);
+                // printf("End Child Process %d...\n", i + 1);
             }
         }
     }
     printf("Get scheduler end time.\n");
-    //clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler->scheduler_end);
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler.scheduler_end);
 
+    report_generator(perf_scheduler, perf_process, n);
     //for(int i=0;i<3;i++){
     //    perf_scheduler[i]->
     //}
 }
 
-double diff_time(struct timespec t2, struct timespec t1) {
-    return (t2.tv_sec - t1.tv_sec) * 1e6 + (t2.tv_nsec - t1.tv_nsec) / 1e3;
-}
-
-void report_generator(Perf_scheduler perf_scheduler, Perf_process *perf_process, int *n) {
-    printf("Total time taken: %lf.\n", perf_scheduler.burst_time);
-    // process, n, bt, tat, wt
-    FILE *f;
-    f = fopen("reports_fcfs.csv", "a+");
-    for(int i=0; i<3; i++) {
-        double arrival, tat, wt;
-        printf("Process %d:\n", i+1);
-        printf("Burst Time = %lf\n", perf_process[i].burst_time);
-        arrival = diff_time(perf_process[i].process_start, perf_scheduler.scheduler_start);
-        tat = diff_time(perf_process[i].process_end, perf_scheduler.scheduler_start);
-        wt = tat - perf_process[i].burst_time;
-        printf("Process Scheduled time Time = %lf\n", arrival);
-        printf("Turn Around Time = %lf\n", tat);
-        printf("Wait Time = %lf\n", wt);
-
-        char output[100];
-        sprintf(output, "%d,%d,%lf,%lf,%lf\n", i+1, n[i], perf_process[i].burst_time, tat, wt);
-        fprintf(f, output, strlen(output));
-    }
-    fclose(f);
-}
 
 void scheduler_fcfs(int *shmPtr, int* n)
 {
@@ -676,7 +680,7 @@ int main(int argc, char *argv[])
     {
         printf("Round robin scheduler selected.\n");
         write(STDOUT_FILENO, "Round robin",12);
-        scheduler_rr(shmPtr, time_quantum);
+        scheduler_rr(shmPtr, time_quantum, n);
     }
     else
     {
