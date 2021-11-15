@@ -1,6 +1,5 @@
 # OS_Assignment
 
-```
 Group Members:
 1.  2019A7PS0038H			Pavan Kumar Reddy Yannam
 2.  2019A7PS0043H			Vineet Venkatesh
@@ -10,4 +9,4 @@ Group Members:
 6.  2019A8PS1275H			Bhargava Teja Uppuluri
 7.  2019A7PS0017H			Bokkasam Venkata Sai Ruthvik
 8.  2019A8PS0651H			Divakarla Vamsi Krishna
-```
+
