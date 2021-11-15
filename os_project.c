@@ -1,30 +1,36 @@
 /*
-1. pthread_mutex to stop child task threads - monitor
-2. Schedulers - scheduler_rr, scheduler_fcfs
-3. Reports
-4. Graphs
+Group Members:
+1.  2019A7PS0038H			Pavan Kumar Reddy Yannam
+2.  2019A7PS0043H			Vineet Venkatesh
+3.  2019A8PS1357H			Avinash Gondela
+4.  2019AAPS0241H			Akhilesh Gowrishetty
+5.  2019A3PS1323H			Anantha Sai Satwik Vysyaraju
+6.  2019A8PS1275H			Bhargava Teja Uppuluri
+7.  2019A7PS0017H			Bokkasam Venkata Sai Ruthvik
+8.  2019A8PS0651H			Divakarla Vamsi Krishna
 */
 
+// Required libraries.
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
-
-#include <sys/shm.h>
+#include <sys/shm.h>    
 #include <sys/types.h>
-#include <sys/wait.h>
+#include <sys/wait.h>   
 #include <pthread.h>
 #include <string.h>
 #include <time.h>
 #include <inttypes.h>
 
-
+// Enumeration for scheduler choice.
 enum scheduler_t
 {
     fcfs = 0,
     rr = 1
 } scheduler_type;
 
+// Structure to store parameters for passing to task threads.
 typedef struct
 {
     int n;
@@ -33,6 +39,7 @@ typedef struct
     int *shmPtr;
 } Task_param;
 
+// Structure to store performance parameters of scheduler.
 typedef struct
 {
     struct timespec scheduler_start;
@@ -42,14 +49,7 @@ typedef struct
 
 } Perf_scheduler;
 
-// typedef struct
-// {
-//     struct timespec thread_start;
-//     struct timespec thread_end;
-
-//     double burst_time;
-// } Perf_threads;
-
+// Structure to store performance parameters of process.
 typedef struct
 {
     struct timespec process_start;
@@ -58,14 +58,16 @@ typedef struct
     double burst_time;
 } Perf_process;
 
+// Function for the task 1 thread.
 void *C1_task(void *task_param)
 {
-    // printf("Enter C1 Task Thread....\n");
+    
     // Parameters Initialization
     Task_param *c1_task_param = (Task_param *)task_param;
     int n1 = c1_task_param->n;
     u_int64_t sum;
-    printf("Enter task 1 thread\n");
+
+    // Stops the running of the thread and waits for process.
     while (!c1_task_param->shmPtr[6])
     {
         continue;
@@ -73,12 +75,9 @@ void *C1_task(void *task_param)
     
     // Locking after creation
     pthread_mutex_lock(&c1_task_param->lock);
-    printf("C1 Task Thread - Waiting for cond signal....\n");
-    while (!c1_task_param->shmPtr[0])
-    {
-        // pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
-    }
-    printf("C1 Task Thread - Recieved cond signal....\n");
+    // printf("C1 Task Thread - Waiting for cond signal....\n");
+    while (!c1_task_param->shmPtr[0]);
+    // printf("C1 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c1_task_param->lock);
 
     // Performing the task
@@ -86,10 +85,7 @@ void *C1_task(void *task_param)
     for (i = 0; i < n1; i++)
     {
         pthread_mutex_lock(&c1_task_param->lock);
-        while (!c1_task_param->shmPtr[0])
-        {
-            // pthread_cond_wait(&c1_task_param->cond, &c1_task_param->lock);
-        }
+        while (!c1_task_param->shmPtr[0]);
         // printf("%d\n", i);
         sum += i;
         pthread_mutex_unlock(&c1_task_param->lock);
@@ -103,37 +99,33 @@ void *C1_task(void *task_param)
     pthread_exit((void *)sum);
 }
 
+// Pipe function to send the computed data in the task 1 thread.
 void C1_pipe(int pipefds[2], u_int64_t sum)
 {
+    // Close the read end.
     close(pipefds[0]);
 
     char sum_res[30];
     sprintf(sum_res, "%" PRIu64"\n", sum);
-
+    // Write to pipe.
     write(pipefds[1], sum_res, strlen(sum_res));
-
+    // Close the write end.
     close(pipefds[1]);
 }
 
+// Function for the task 2 thread.
 void *C2_task(void *task_param)
 {
     // Parameters Initialization
     Task_param *c2_task_param = (Task_param *)task_param;
     int n2 = c2_task_param->n;
 
-    while (!c2_task_param->shmPtr[7])
-    {
-        continue;
-    }
+    while (!c2_task_param->shmPtr[7]);
 
     // Locking after creation
     pthread_mutex_lock(&c2_task_param->lock);
     // printf("C2 Task Thread - Waiting for cond signal....\n");
-    while (!c2_task_param->shmPtr[1])
-    {
-        // printf("\n&");
-        // pthread_cond_wait(&c2_task_param->cond, &c2_task_param->lock);
-    }
+    while (!c2_task_param->shmPtr[1]);
     // printf("C2 Task Thread - Recieved cond signal....\n");
     pthread_mutex_unlock(&c2_task_param->lock);
 
@@ -448,7 +440,7 @@ double diff_time(struct timespec t2, struct timespec t1) {
 }
 
 void report_generator(Perf_scheduler perf_scheduler, Perf_process *perf_process, int *n) {
-    printf("Total time taken: %lf.\n", perf_scheduler.burst_time);
+    printf("Total time taken: %lf.\n", diff_time(perf_scheduler.scheduler_end, perf_scheduler.scheduler_start));
     // process, n, bt, tat, wt
     FILE *f;
     f = fopen("reports_rr.csv", "a+");
@@ -548,7 +540,7 @@ void scheduler_rr(int *shmPtr, double time_quantum, int *n)
     }
     printf("Get scheduler end time.\n");
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &perf_scheduler.scheduler_end);
-
+    perf_scheduler.burst_time = time_quantum;
     report_generator(perf_scheduler, perf_process, n);
     //for(int i=0;i<3;i++){
     //    perf_scheduler[i]->
